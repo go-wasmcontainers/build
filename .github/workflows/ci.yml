@@ -1,0 +1,113 @@
+name: ci
+on: { push: { branches: [main] }, pull_request: {} }
+permissions: { contents: read }
+jobs:
+  # A workflow that fails to parse reports no checks at all, which reads
+  # exactly like checks that have not started. actionlint is the first lane.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - run: go version
+      - name: gofmt
+        shell: bash
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "::error::not gofmt-ed:"; echo "$out"; exit 1; fi
+      - run: go vet ./...
+      - run: CGO_ENABLED=0 go build ./...
+      - name: go test -race, with coverage
+        shell: bash
+        run: |
+          CGO_ENABLED=1 go test -race -count=1 -coverpkg=./... -coverprofile=cov.out ./...
+          go tool cover -func=cov.out > cov.txt
+          tail -1 cov.txt
+          echo "### Coverage (${{ matrix.os }}): $(tail -1 cov.txt | tr -s '\t ' ' ')" >> "$GITHUB_STEP_SUMMARY"
+
+  # The Containerfile, the build context and its ignore file are untrusted.
+  fuzz:
+    name: fuzz smoke ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: FuzzParse, pkg: ./parser }
+          - { target: FuzzWord, pkg: ./expand }
+          - { target: FuzzMatch, pkg: ./ignore }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - run: go version
+      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 45s ${{ matrix.pkg }}
+
+  vulns:
+    name: govulncheck, judged by vulngate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - run: go version
+      # No pipefail on purpose: govulncheck's exit status does not say
+      # whether a finding is reachable; vulngate judges the JSON, and an
+      # empty scan is refused outright.
+      - name: govulncheck, judged by vulngate
+        run: |
+          set -eu
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.20.1
+          BIN="$(go env GOPATH)/bin"
+          "$BIN/govulncheck" -format json ./... > /tmp/vuln.json || true
+          test -s /tmp/vuln.json || { echo "::error::govulncheck wrote nothing at all"; exit 1; }
+          "$BIN/vulngate" -go "$(go env GOVERSION)" /tmp/vuln.json
+
+  # The builder runs in the browser playground (GOOS=js) and its CLI with
+  # wctr as a wasip1 module: everything must keep building for both.
+  wasm:
+    name: build for js/wasm and wasip1/wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - run: go version
+      - run: GOOS=js GOARCH=wasm CGO_ENABLED=0 go vet ./...
+      - run: GOOS=wasip1 GOARCH=wasm CGO_ENABLED=0 go build ./...
+
+  cross:
+    name: cross ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: linux, goarch: '386' }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - run: go version
+      - run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build ./...
