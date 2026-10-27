@@ -84,4 +84,24 @@ what each one decides here.
   `rootfs.diff_ids` (one per layer, the digest of the uncompressed tar),
   `history` (`created`, `created_by`, `comment`, `empty_layer` for a step
   that changes no file — ENV, CMD, …; its example writes metadata steps as
-  `/bin/sh -c #(nop) …`).
+  `/bin/sh -c #(nop) …`). The builder writes metadata steps that way and
+  computes COPY layers whose digests are taken over the uncompressed tar.
+- **OCI image-spec**, `image-layout.md`: the `oci-layout` file with
+  `imageLayoutVersion`, `index.json` as the entry point, blobs under
+  `blobs/<alg>/<encoded>`, the `org.opencontainers.image.ref.name`
+  annotation as a tag (valid only on `index.json` descriptors). The empty
+  image `FROM scratch` starts from is such a layout, sent to `/images/load`.
+
+## Engine API
+
+- **Docker Engine API**, `api/swagger.yaml` in
+  [moby/moby](https://github.com/moby/moby): the shapes of the endpoints
+  the builder asks of the engine (docs/ENGINE.md) — `POST /commit` (query
+  `container`, `repo`, `tag`, `comment`, `author`; body a
+  `ContainerConfig`; `201` with an ID), `POST /images/{name}/tag` (`repo`,
+  `tag`; `201`), `POST /images/load` (a tar body, `quiet`),
+  `PUT /containers/{id}/archive` (`path`, `noOverwriteDirNonDir`: "an error
+  if unpacking … would cause an existing directory to be replaced with a
+  non-directory and vice versa"), `HEAD` and `GET` on the same path (stat,
+  tar of a resource). The engine serves a subset of this API; these are
+  the shapes it is asked to add.

@@ -52,6 +52,7 @@ jobs:
           - { target: FuzzParse, pkg: ./parser }
           - { target: FuzzWord, pkg: ./expand }
           - { target: FuzzMatch, pkg: ./ignore }
+          - { target: FuzzFromTar, pkg: ./buildcontext }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
