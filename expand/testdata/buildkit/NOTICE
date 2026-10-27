@@ -1,0 +1,4 @@
+envVarTest and wordsTest are copied unchanged from github.com/moby/buildkit
+v0.34.1, frontend/dockerfile/shell/, and are licensed under the Apache
+License 2.0 (LICENSE in this directory). They are used as golden test data
+only.
