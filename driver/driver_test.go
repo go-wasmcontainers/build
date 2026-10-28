@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -139,6 +140,35 @@ func TestContract(t *testing.T) {
 		})
 	}
 }
+
+// The base may carry the API version (api.Client.HTTP's does) or not;
+// requests go to exactly one version prefix either way.
+func TestBaseVersionNeverDoubled(t *testing.T) {
+	for in, want := range map[string]string{
+		"http://wctr": "http://wctr", "http://wctr/": "http://wctr", "http://wctr/v1.47": "http://wctr",
+		"http://wctr/v1.47/": "http://wctr", "http://wctr/v1.24": "http://wctr", "http://h/p/v2.0": "http://h/p",
+		"http://h/v1.47x": "http://h/v1.47x",
+	} {
+		if got := driver.StripVersion(in); got != want {
+			t.Errorf("%s: %s, want %s", in, got, want)
+		}
+	}
+	var paths []string
+	hc := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		paths = append(paths, r.URL.Path)
+		return &http.Response{StatusCode: 404, Body: io.NopCloser(strings.NewReader(`{"message":"x"}`)), Header: http.Header{}}, nil
+	})}
+	for _, base := range []string{"http://wctr", "http://wctr/v1.47"} {
+		driver.NewClient(hc, base).InspectImage(context.Background(), "img")
+	}
+	if len(paths) != 2 || paths[0] != paths[1] || strings.Count(paths[0], "/v1.") != 1 {
+		t.Fatalf("paths %q", paths)
+	}
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestDial(t *testing.T) {
 	for _, h := range []string{"tcp://x:1", "unix://", "::"} {

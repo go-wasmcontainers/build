@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/go-wasmcontainers/engine/api"
@@ -21,10 +22,20 @@ type Client struct {
 	base string
 }
 
-// NewClient talks to base (e.g. "http://wctr") through hc: a unix-socket
-// transport natively, the engine's in-process transport in a browser.
+// NewClient talks to base through hc: a unix-socket transport natively,
+// the engine's in-process transport in a browser. base may or may not end
+// with an API version ("http://wctr" or "http://wctr/v1.47", which is what
+// the engine's api.Client.HTTP returns): the version is never doubled, and
+// requests always go to this client's API version.
 func NewClient(hc *http.Client, base string) *Client {
-	return &Client{hc: hc, base: strings.TrimSuffix(base, "/") + "/v" + api.APIVersion}
+	return &Client{hc: hc, base: StripVersion(base) + "/v" + api.APIVersion}
+}
+
+var versionSuffix = regexp.MustCompile(`/v[0-9]+\.[0-9]+/*$`)
+
+// StripVersion removes a trailing "/vMAJOR.MINOR" (and slashes) from base.
+func StripVersion(base string) string {
+	return strings.TrimRight(versionSuffix.ReplaceAllString(strings.TrimRight(base, "/"), ""), "/")
 }
 
 // Dial connects to "unix:///path/to/socket", wctr's host syntax.
