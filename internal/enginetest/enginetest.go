@@ -111,8 +111,10 @@ func (e *Engine) HTTPClient() *http.Client {
 	return &http.Client{Transport: &inproc.Transport{Handler: e}}
 }
 
-// Driver is a builder driver for this engine.
-func (e *Engine) Driver() *driver.Client { return driver.NewClient(e.HTTPClient(), "http://wctr") }
+// Driver is a builder driver for this engine, made the way a host program
+// makes it: from the engine's own client's HTTP(), whose base already
+// carries the API version (as wctr's extension hook hands it over).
+func (e *Engine) Driver() *driver.Client { return driver.NewClient(e.API().HTTP()) }
 
 // API is the engine's own client.
 func (e *Engine) API() *api.Client { return api.NewClientWith(e.HTTPClient(), "http://wctr") }
