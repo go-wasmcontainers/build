@@ -10,9 +10,13 @@ real engine; `internal/enginetest.NewPrototype` keeps the prototype the
 engine's endpoints were specified from, and `driver`'s contract test
 checks that both answer alike.
 
-Still open on the engine side: `HEAD /containers/{id}/archive` is served
-by the GET handler, which builds the tar and discards it; a stat-only HEAD
-would make WORKDIR checks cheap.
+`HEAD /containers/{id}/archive` is stat-only since engine v0.14.0 (it
+answers `X-Docker-Container-Path-Stat` and no body); `driver`'s
+`TestStatPathTransfersNothing` checks that the WORKDIR check moves no byte
+of an 8 MiB directory, against a GET of it as the control. A RUN step's
+output is read from `GET /containers/{id}/logs?follow=1` opened before the
+start: the engine follows a created container until it has run, so the
+output streams as the step runs and nothing is missed.
 
 | Endpoint | Used for | Contract |
 |---|---|---|

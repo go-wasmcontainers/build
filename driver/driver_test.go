@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-wasmcontainers/build/driver"
 	"github.com/go-wasmcontainers/build/internal/enginetest"
@@ -138,6 +139,81 @@ func TestContract(t *testing.T) {
 				t.Fatal("commit of a missing container")
 			}
 		})
+	}
+}
+
+// countingBody counts the bytes a response body delivers.
+type countingBody struct {
+	io.ReadCloser
+	n *int64
+}
+
+func (b countingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	*b.n += int64(n)
+	return n, err
+}
+
+// TestStatPathTransfersNothing: the WORKDIR check (HEAD on the archive
+// endpoint, stat-only since engine v0.14.0) moves no tar, however large
+// the directory — while a GET of the same directory does (the control).
+func TestStatPathTransfersNothing(t *testing.T) {
+	e, err := enginetest.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	var got int64
+	inner := e.HTTPClient().Transport
+	hc := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		resp, err := inner.RoundTrip(r)
+		if err == nil && strings.HasSuffix(r.URL.Path, "/archive") && r.Method != http.MethodPut {
+			resp.Body = countingBody{resp.Body, &got}
+		}
+		return resp, err
+	})}
+	_, base := e.API().HTTP()
+	d := driver.NewClient(hc, base)
+	ctx := context.Background()
+	id, err := d.LoadImage(ctx, bytes.NewReader(emptyLayout(t, "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := d.CreateContainer(ctx, driver.RunSpec{Image: id, Entrypoint: []string{"/bin/sh", "-c", "#(nop)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tb bytes.Buffer
+	tw := tar.NewWriter(&tb)
+	chunk := bytes.Repeat([]byte("x"), 16<<10)
+	for i := 0; i < 512; i++ { // 8 MiB in 512 files
+		tw.WriteHeader(&tar.Header{Name: "big/f" + strconv.Itoa(i), Mode: 0o644, Size: int64(len(chunk)), Typeflag: tar.TypeReg})
+		tw.Write(chunk)
+	}
+	tw.Close()
+	if err := d.PutArchive(ctx, c, "/", &tb); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	ok, err := d.StatPath(ctx, c, "/big")
+	took := time.Since(start)
+	if !ok || err != nil {
+		t.Fatalf("stat: %v %v", ok, err)
+	}
+	if got != 0 {
+		t.Fatalf("HEAD transferred %d bytes", got)
+	}
+	if took > 2*time.Second {
+		t.Fatalf("HEAD took %v", took)
+	}
+	rc, err := d.GetArchive(ctx, c, "/big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, rc)
+	rc.Close()
+	if got < 8<<20 {
+		t.Fatalf("control: GET moved only %d bytes, the counter cannot see a tar", got)
 	}
 }
 

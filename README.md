@@ -159,13 +159,14 @@ with the build command added (go1.27.3, `GOOS=js`).
 ## Limitations
 
 - An engine of v0.12.0 or later is required (the endpoints in
-  [docs/ENGINE.md](docs/ENGINE.md)). The engine answers `HEAD` on a
-  container archive by building the whole tar and discarding it, so a
-  WORKDIR check on a large directory costs a walk of it.
+  [docs/ENGINE.md](docs/ENGINE.md)); from v0.14.0 the WORKDIR check is a
+  stat-only `HEAD` that moves no tar (tested on an 8 MiB directory).
 - Shell-form RUN needs engine v0.17.0 or later and an image with a shell
   (the shell base image); the shell has no signals, job control or
-  process substitution (see its README). Step output is printed when the
-  step ends, not streamed.
+  process substitution (see its README).
+- A step's output streams as it runs (the log stream is followed from
+  before the start, so no line is lost); stdout and stderr are printed
+  as they come, without a per-step prefix.
 - Until `ghcr.io/go-wasmcontainers/shell` is published, the tests build
   that image from a pinned commit of go-wasmcontainers/shell
   (`$WCTR_SHELL_SRC`; CI sets it and fails rather than skip).
