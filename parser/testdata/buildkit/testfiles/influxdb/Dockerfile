@@ -1,4 +1,4 @@
-FROM ubuntu:14.04
+FROM ubuntu:26.04
 
 RUN apt-get update && apt-get install wget -y
 RUN wget http://s3.amazonaws.com/influxdb/influxdb_latest_amd64.deb

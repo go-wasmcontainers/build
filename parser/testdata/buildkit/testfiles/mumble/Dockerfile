@@ -1,4 +1,4 @@
-FROM ubuntu:14.04
+FROM ubuntu:26.04
 
 RUN apt-get update && apt-get install libcap2-bin mumble-server -y
 
