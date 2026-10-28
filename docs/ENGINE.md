@@ -43,11 +43,23 @@ a parent), else `$WCTR_HOST`, else `unix:///var/run/wctr.sock`.
 
 ## Exit statuses
 
-The builder maps the engine's run statuses: 127 (module not found) and 126
-(not executable) on a shell-form `RUN` become "RUN in shell form needs the
-shell …", naming the missing shell; on an exec-form `RUN`, "… was not found
-in the image". Any other non-zero status stops the build with
+The builder maps the engine's run statuses: when the engine cannot start
+the step's module (127 module not found, 126 not executable, reported with
+an error message), a shell-form `RUN` becomes "RUN in shell form needs the
+shell …", naming the missing shell, and an exec-form `RUN` "… was not
+found in the image". A status the program itself returns — including the
+shell's 127 for a command it cannot find — stops the build with
 `process "…" did not complete successfully: exit code: N`.
+
+## Shell-form RUN
+
+Since engine v0.17.0 the engine's WASI host serves the WASIX process subset
+(`wasix_32v1`: `proc_spawn2/3`, `proc_join`, `fd_pipe`, …; `wctrd` enables it
+with its default `--wasi engine`). The shell base image's `/bin/sh` uses it to
+run pipelines and programs, so `RUN echo hi > /x && cat /x | wc -c` works
+`FROM shell`. An embedder building its own executor must add
+`wasi.WASIX` to `wazero.Options.HostModules` (as `internal/enginetest`
+does), otherwise the shell traps with "module[wasix_32v1] not instantiated".
 
 ## Later: `RUN pkgx install …`
 
