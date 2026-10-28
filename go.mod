@@ -3,7 +3,7 @@ module github.com/go-wasmcontainers/build
 go 1.27.3
 
 require (
-	github.com/go-wasmcontainers/engine v0.12.0
+	github.com/go-wasmcontainers/engine v0.17.0
 	github.com/spf13/cobra v1.10.2
 )
 

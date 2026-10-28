@@ -1,4 +1,4 @@
-FROM ubuntu:14.04
+FROM ubuntu:14.04.5
 
 RUN apt-get update -qy && apt-get install tmux zsh weechat-curses -y
 

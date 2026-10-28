@@ -1,4 +1,4 @@
-FROM	ubuntu:14.04
+FROM	ubuntu:14.04.5
 LABEL	maintainer	Seongyeol Lim <seongyeol37@gmail.com>
 
 COPY	.	/go/src/github.com/docker/docker

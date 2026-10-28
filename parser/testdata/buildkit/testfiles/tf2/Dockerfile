@@ -1,4 +1,4 @@
-FROM ubuntu:12.04
+FROM ubuntu:12.04.5
 
 EXPOSE 27015
 EXPOSE 27005

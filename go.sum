@@ -1,8 +1,8 @@
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
-github.com/go-wasmcontainers/engine v0.12.0 h1:vnVpAvI5BYIQOQFMRj2xCaCn/pSRJCrd06oqORz1V2Y=
-github.com/go-wasmcontainers/engine v0.12.0/go.mod h1:K20JKyjxWQY4LwYKVsfomGsbNXPfIJk+UDbR0zrnpNI=
+github.com/go-wasmcontainers/engine v0.17.0 h1:LbJR0qrbDqBnwsQ0yuesN9UZPyWdl0Qsn1cyVJzGlQ8=
+github.com/go-wasmcontainers/engine v0.17.0/go.mod h1:m+Ns/3LiCpx6DUKVbEpwBT9qvTuTcTKqgF3+uwXn4NY=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/klauspost/compress v1.20.0 h1:a3C1ke2ohxFymNlb2HWAHjDeKCI90scRskErZkR0ezA=
