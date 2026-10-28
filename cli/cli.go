@@ -1,5 +1,5 @@
-// Package cli is the `build` command: `wctr build`, and the standalone
-// `wctr-build` until the engine's wctr wires it in.
+// Package cli is the `build` command: `wctr build` (ForEngine, for wctr's
+// extension hook), and the standalone `wctr-build`.
 package cli
 
 import (
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,28 @@ type Options struct {
 
 // Command is `build` with the default wiring.
 func Command() *cobra.Command { return NewCommand(Options{}) }
+
+// HTTPEngine is how a host program hands over its engine: the engine's
+// cli.Engine (wctr's Options.Extra) satisfies it.
+type HTTPEngine interface {
+	HTTP() (*http.Client, string, error)
+}
+
+// ForEngine is `build` for wctr's command tree:
+//
+//	cli.Options{Extra: []func(cli.Engine) *cobra.Command{
+//		func(e cli.Engine) *cobra.Command { return buildcli.ForEngine(e) }}}
+//
+// The build talks to the engine wctr's -H selects.
+func ForEngine(e HTTPEngine) *cobra.Command {
+	return NewCommand(Options{Engine: func(*cobra.Command) (driver.Engine, error) {
+		hc, base, err := e.HTTP()
+		if err != nil {
+			return nil, err
+		}
+		return driver.NewClient(hc, base), nil
+	}})
+}
 
 // NewCommand is `build` wired by opt.
 func NewCommand(opt Options) *cobra.Command {

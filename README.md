@@ -16,11 +16,11 @@ BuildKit sits beside a container daemon: each step runs in a container
 made from the previous step's image, which is then committed.
 
 > **Status: M1.** Multi-stage builds, the build cache, `.containerignore`,
-> and every instruction below are done and tested against an in-process
-> engine. The engine endpoints a build needs (`commit`, `tag`, `load`,
-> container archives — [docs/ENGINE.md](docs/ENGINE.md)) are being added
-> to the engine; until they ship, `wctr-build` needs an engine that serves
-> them, and `wctr build` is not wired into `wctr` yet.
+> and every instruction below are done, and tested against the real engine
+> (v0.12.0, in-process, wazero), which serves every endpoint a build needs
+> ([docs/ENGINE.md](docs/ENGINE.md)). `wctr-build` works with a `wctrd` of
+> v0.12.0 or later; `cli.ForEngine` plugs the command into `wctr` through
+> its extension hook (`wctr build` appears once wctr wires it).
 
 ## Demo
 
@@ -150,14 +150,15 @@ the context, bounded as above. Not yet compared with BuildKit on the same
 Containerfile — an open item.
 
 In the browser, `wctr build` costs 0.98 MB of js/wasm: a program holding
-the engine's `wctr` command tree is 13,752,774 bytes, 14,736,179 with the
-build command added (go1.27.3, `GOOS=js`).
+the engine's (v0.12.0) `wctr` command tree is 13,777,834 bytes, 14,757,857
+with the build command added (go1.27.3, `GOOS=js`).
 
 ## Limitations
 
-- The engine endpoints in [docs/ENGINE.md](docs/ENGINE.md) are required;
-  the tests run against `internal/enginetest`, which prototypes them on
-  engine v0.11.0.
+- An engine of v0.12.0 or later is required (the endpoints in
+  [docs/ENGINE.md](docs/ENGINE.md)). The engine answers `HEAD` on a
+  container archive by building the whole tar and discarding it, so a
+  WORKDIR check on a large directory costs a walk of it.
 - Shell-form RUN needs a builtin-only shell until the engine spawns
   processes; step output is printed when the step ends, not streamed.
 - `RUN pkgx install …` (installing go-pkgx bottles) is a later goal; what it

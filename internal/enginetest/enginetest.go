@@ -1,19 +1,18 @@
 // Package enginetest is an in-process engine for the builder's tests: the
 // real engine (daemon, API server, wazero executor) at the version in
-// go.mod, plus a prototype of the endpoints the builder needs and the
-// engine does not serve yet:
+// go.mod (New), and, for comparison, the same engine behind this
+// package's prototype of the endpoints a builder needs (NewPrototype):
 //
 //	POST /commit?container=&repo=&tag=&comment=&author=   body: image config
 //	POST /images/{name}/tag?repo=&tag=
 //	POST /images/load                                    body: OCI layout tar
 //	PUT  /containers/{id}/archive?path=&noOverwriteDirNonDir=
-//	GET  /containers/{id}/archive?path=
+//	HEAD|GET /containers/{id}/archive?path=
 //	GET  /images/{name}/json                              (full config)
 //
-// Their shapes are those of the Docker Engine API; the engine is asked to
-// implement them (see docs/ENGINE.md). Until it does, this package reaches
-// the daemon's image store through reflection — a stopgap pinned to the
-// engine version in go.mod, used by tests only.
+// The engine serves all of them since v0.12.0 (docs/ENGINE.md was their
+// specification). The prototype reaches the daemon's image store through
+// reflection; it is test-only and pinned to the engine version in go.mod.
 package enginetest
 
 import (
@@ -59,12 +58,14 @@ type Engine struct {
 	store *image.Store
 	exec  *wazero.Executor
 	inner http.Handler
+	proto bool
 	mu    sync.Mutex
 	// Calls counts requests per route, for tests.
 	Calls map[string]int
 }
 
-// New starts an engine whose images live under dir.
+// New starts the real engine (its own API, every endpoint the builder
+// uses) with its images under dir.
 func New(dir string) (*Engine, error) {
 	ex := wazero.New(wazero.Options{})
 	d, err := daemon.New(daemon.Options{Root: dir, Containers: container.Options{Executor: ex}})
@@ -72,15 +73,31 @@ func New(dir string) (*Engine, error) {
 		ex.Close(context.Background())
 		return nil, err
 	}
+	return &Engine{D: d, exec: ex, inner: server.New(d, server.Info{Version: "enginetest"}), Calls: map[string]int{}}, nil
+}
+
+// NewPrototype starts the engine with this package's own implementation
+// of the builder's endpoints in front of the engine's: the prototype the
+// engine's were specified from, kept to check that both answer the
+// driver alike.
+func NewPrototype(dir string) (*Engine, error) {
+	e, err := New(dir)
+	if err != nil {
+		return nil, err
+	}
+	e.proto = true
+	d := e.D
 	f := reflect.ValueOf(d).Elem().FieldByName("store")
 	if !f.IsValid() {
 		return nil, errors.New("enginetest: the daemon has no store field (engine changed): implement the endpoints in the engine")
 	}
 	st, ok := reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem().Interface().(*image.Store)
 	if !ok {
+		e.Close()
 		return nil, errors.New("enginetest: unexpected store type")
 	}
-	return &Engine{D: d, store: st, exec: ex, inner: server.New(d, server.Info{Version: "enginetest"}), Calls: map[string]int{}}, nil
+	e.store = st
+	return e, nil
 }
 
 // Close stops the engine.
@@ -115,6 +132,18 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	q := r.URL.Query()
+	if !e.proto {
+		switch {
+		case r.Method == http.MethodPost && p == "/commit":
+			e.count("commit")
+		case r.Method == http.MethodPost && p == "/images/load":
+			e.count("load")
+		default:
+			e.count(r.Method + " " + p)
+		}
+		e.inner.ServeHTTP(w, r)
+		return
+	}
 	switch {
 	case r.Method == http.MethodPost && p == "/commit":
 		e.count("commit")
