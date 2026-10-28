@@ -3,10 +3,16 @@
 The builder drives the engine only through its API (package `driver`). It
 uses the endpoints the engine serves since v0.11.0 (`GET /images/{name}/json`,
 `POST /images/create`, `POST /containers/create`, `start`, `wait`, `logs`,
-`DELETE /containers/{id}`) and these, which the engine does not serve yet.
-Their shapes are the Docker Engine API's (`api/swagger.yaml` in
-moby/moby); `internal/enginetest` implements all of them over engine
-v0.11.0 and is what the tests run against until the engine has them.
+`DELETE /containers/{id}`) and these, which the engine serves since
+v0.12.0 (this page was their specification). Their shapes are the Docker
+Engine API's (`api/swagger.yaml` in moby/moby). The tests run against the
+real engine; `internal/enginetest.NewPrototype` keeps the prototype the
+engine's endpoints were specified from, and `driver`'s contract test
+checks that both answer alike.
+
+Still open on the engine side: `HEAD /containers/{id}/archive` is served
+by the GET handler, which builds the tar and discards it; a stat-only HEAD
+would make WORKDIR checks cheap.
 
 | Endpoint | Used for | Contract |
 |---|---|---|

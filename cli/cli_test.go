@@ -4,6 +4,9 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,5 +129,45 @@ func TestDefaultEngine(t *testing.T) {
 	}
 	if Command().Use == "" {
 		t.Fatal("no use line")
+	}
+}
+
+type hostEngine struct{ e *enginetest.Engine }
+
+func (h hostEngine) HTTP() (*http.Client, string, error) { return h.e.HTTPClient(), "http://wctr", nil }
+
+type brokenHost struct{}
+
+func (brokenHost) HTTP() (*http.Client, string, error) {
+	return nil, "", errors.New("no engine selected")
+}
+
+// ForEngine is what wctr's Options.Extra hook calls: the build reaches the
+// engine the host hands over.
+func TestForEngine(t *testing.T) {
+	e, err := enginetest.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "Containerfile"), []byte("FROM scratch\nLABEL via=host\n"), 0o644)
+	cmd := ForEngine(hostEngine{e})
+	cmd.SetOut(io.Discard)
+	cmd.SetArgs([]string{"-t", "via-host", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if img, err := e.Driver().InspectImage(context.Background(), "via-host"); err != nil || img.Config.Labels["via"] != "host" {
+		t.Fatalf("%+v %v", img, err)
+	}
+	cmd = ForEngine(brokenHost{})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "no engine selected") {
+		t.Fatalf("got %v", err)
 	}
 }
