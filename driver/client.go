@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-wasmcontainers/engine/api"
 )
@@ -260,9 +261,15 @@ func (c *Client) GetArchive(ctx context.Context, id, p string) (io.ReadCloser, e
 	return resp.Body, nil
 }
 
-// Run implements Engine: register the wait, start, and once the step has
-// exited copy its logs (the whole output, in order: an attach registered
-// after the start could miss the first lines of a fast step).
+// logDrain bounds how long Run waits, once the step has exited, for the
+// rest of its streamed output.
+const logDrain = 10 * time.Second
+
+// Run implements Engine: register the wait, follow the logs, start, and
+// copy the output while the step runs. The log stream is opened before
+// the start (the engine follows a created container until it has run), so
+// nothing is missed, however fast the step, and it ends when the step
+// exits.
 func (c *Client) Run(ctx context.Context, id string, stdout, stderr io.Writer) (int, error) {
 	cpath := "/containers/" + url.PathEscape(id)
 	wait, err := c.do(ctx, http.MethodPost, cpath+"/wait", url.Values{"condition": {"next-exit"}}, nil, "")
@@ -270,6 +277,19 @@ func (c *Client) Run(ctx context.Context, id string, stdout, stderr io.Writer) (
 		return 0, err
 	}
 	defer wait.Body.Close()
+	lctx, cancelLogs := context.WithCancel(ctx)
+	defer cancelLogs()
+	streamed := make(chan struct{})
+	logs, err := c.do(lctx, http.MethodGet, cpath+"/logs", url.Values{"stdout": {"1"}, "stderr": {"1"}, "follow": {"1"}}, nil, "")
+	if err != nil {
+		close(streamed)
+	} else {
+		go func() {
+			defer close(streamed)
+			defer logs.Body.Close()
+			_ = api.Demux(stdout, stderr, logs.Body)
+		}()
+	}
 	startErr := c.json(ctx, http.MethodPost, cpath+"/start", nil, nil, nil)
 	var res api.ContainerWaitResponse
 	if err := json.NewDecoder(io.LimitReader(wait.Body, 1<<20)).Decode(&res); err != nil {
@@ -278,9 +298,11 @@ func (c *Client) Run(ctx context.Context, id string, stdout, stderr io.Writer) (
 		}
 		return 0, fmt.Errorf("waiting for the step: %w", err)
 	}
-	if logs, err := c.do(ctx, http.MethodGet, cpath+"/logs", url.Values{"stdout": {"1"}, "stderr": {"1"}}, nil, ""); err == nil {
-		_ = api.Demux(stdout, stderr, logs.Body)
-		logs.Body.Close()
+	select {
+	case <-streamed:
+	case <-time.After(logDrain):
+		cancelLogs()
+		<-streamed
 	}
 	code := int(res.StatusCode)
 	if startErr != nil || (res.Error != nil && res.Error.Message != "") {

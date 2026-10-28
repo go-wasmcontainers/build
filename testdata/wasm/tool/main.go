@@ -5,6 +5,7 @@
 //	tool cat PATH...         print files
 //	tool pwd                 print the working directory
 //	tool exit N              exit with status N
+//	tool slow MS             print, sleep MS milliseconds, print
 //
 // Installed as /bin/sh it is also a builtin-only shell: `sh -c "tool-args"`
 // splits its argument on spaces and runs it as above.
@@ -16,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -55,6 +57,12 @@ func main() {
 		n, _ := strconv.Atoi(args[1])
 		fmt.Println("exiting", n)
 		os.Exit(n)
+	case "slow":
+		// slow MS: print, sleep MS milliseconds, print.
+		ms, _ := strconv.Atoi(args[1])
+		fmt.Println("slow: start")
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+		fmt.Println("slow: end")
 	default:
 		fmt.Fprintln(os.Stderr, "tool: unknown command", args[0])
 		os.Exit(2)
