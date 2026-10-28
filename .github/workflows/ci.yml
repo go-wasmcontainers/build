@@ -33,9 +33,21 @@ jobs:
           if [ -n "$out" ]; then echo "::error::not gofmt-ed:"; echo "$out"; exit 1; fi
       - run: go vet ./...
       - run: CGO_ENABLED=0 go build ./...
+      # The shell base image (/bin/sh + coreutils) for the shell-form RUN
+      # tests, built from a pinned commit of go-wasmcontainers/shell until
+      # ghcr.io/go-wasmcontainers/shell is published. Checked out after
+      # gofmt and vet so they never see it.
+      - uses: actions/checkout@v7
+        with:
+          repository: go-wasmcontainers/shell
+          ref: d8c9fc8c0dc83854747385e519a79d16f976cb10
+          path: shell-src
       - name: go test -race, with coverage
         shell: bash
+        env:
+          WCTR_REQUIRE_SHELL: '1'
         run: |
+          export WCTR_SHELL_SRC="$PWD/shell-src"
           CGO_ENABLED=1 go test -race -count=1 -coverpkg=./... -coverprofile=cov.out ./...
           go tool cover -func=cov.out > cov.txt
           tail -1 cov.txt

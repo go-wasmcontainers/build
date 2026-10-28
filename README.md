@@ -17,10 +17,13 @@ made from the previous step's image, which is then committed.
 
 > **Status: M1.** Multi-stage builds, the build cache, `.containerignore`,
 > and every instruction below are done, and tested against the real engine
-> (v0.12.0, in-process, wazero), which serves every endpoint a build needs
-> ([docs/ENGINE.md](docs/ENGINE.md)). `wctr-build` works with a `wctrd` of
-> v0.12.0 or later; `cli.ForEngine` plugs the command into `wctr` through
-> its extension hook (`wctr build` appears once wctr wires it).
+> (v0.17.0, in-process, wazero), which serves every endpoint a build needs
+> ([docs/ENGINE.md](docs/ENGINE.md)). Shell-form `RUN` runs `/bin/sh` from
+> the [shell](https://github.com/go-wasmcontainers/shell) base image
+> through the engine's WASIX process subset (engine v0.17.0 or later).
+> `wctr-build` works with a `wctrd` of v0.12.0 or later (v0.17.0 for
+> shell-form RUN); `cli.ForEngine` plugs the command into `wctr` through
+> its extension hook.
 
 ## Demo
 
@@ -75,7 +78,7 @@ standard input, the Containerfile inside it.
 | `FROM [--platform=wasip1/wasm] IMAGE [AS NAME]` | images are pulled for `wasip1/wasm` (another platform is an error); `scratch`; earlier stages; ARGs declared before the first FROM; ONBUILD triggers of the base run after it |
 | `ARG`, `ENV`, `LABEL` | the reference's scoping: global ARGs, re-declaration in a stage, ENV over ARG, predefined proxy ARGs (out of the cache key) and `TARGETPLATFORM` & co. |
 | `RUN ["prog", "arg"]` | runs a WebAssembly program in the step's container; `--network=none` |
-| `RUN cmd` (shell form) | runs `SHELL` (default `["/bin/sh", "-c"]`) with the command. The engine does not spawn processes yet, so this needs an image whose `/bin/sh` is itself a program that runs without spawning (a builtin-only shell); otherwise the build stops with "RUN in shell form needs the shell "/bin/sh" … the image has no shell, or the engine cannot spawn processes yet". A real `/bin/sh` and process spawning are on their way (go-wasmcontainers/shell). |
+| `RUN cmd` (shell form) | runs `SHELL` (default `["/bin/sh", "-c"]`) with the command: on the shell base image (`FROM shell`, `ghcr.io/go-wasmcontainers/shell`) pipes, redirections, `&&`, command substitution and coreutils work, e.g. `RUN echo hi > /x && cat /x \| wc -c` (engine v0.17.0 or later, WASIX process subset). In an image without a runnable shell, the build stops with "RUN in shell form needs the shell "/bin/sh" … the image has no shell, or the engine cannot spawn processes yet". A command the shell cannot find is the shell's status 127, reported as such. |
 | `COPY`, `ADD` | from the context or `--from=` a stage (name or index) or an image; wildcards (`filepath.Match`), directory contents, trailing `/`, relative destinations against WORKDIR, `--chown=UID[:GID]` (numeric), `--chmod=OCTAL`, `--link` (accepted, no effect); ADD unpacks local tar, tar.gz, tar.bz2 archives (`--unpack=false` to keep them) |
 | `WORKDIR` | relative to the previous one; created when missing |
 | `CMD`, `ENTRYPOINT`, `SHELL`, `USER`, `EXPOSE`, `VOLUME`, `LABEL`, `MAINTAINER` | recorded in the image (a new ENTRYPOINT clears an inherited CMD); USER is recorded only: WASI has no users |
@@ -159,8 +162,13 @@ with the build command added (go1.27.3, `GOOS=js`).
   [docs/ENGINE.md](docs/ENGINE.md)). The engine answers `HEAD` on a
   container archive by building the whole tar and discarding it, so a
   WORKDIR check on a large directory costs a walk of it.
-- Shell-form RUN needs a builtin-only shell until the engine spawns
-  processes; step output is printed when the step ends, not streamed.
+- Shell-form RUN needs engine v0.17.0 or later and an image with a shell
+  (the shell base image); the shell has no signals, job control or
+  process substitution (see its README). Step output is printed when the
+  step ends, not streamed.
+- Until `ghcr.io/go-wasmcontainers/shell` is published, the tests build
+  that image from a pinned commit of go-wasmcontainers/shell
+  (`$WCTR_SHELL_SRC`; CI sets it and fails rather than skip).
 - `RUN pkgx install …` (installing go-pkgx bottles) is a later goal; what it
   needs is in [docs/ENGINE.md](docs/ENGINE.md).
 

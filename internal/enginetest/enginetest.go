@@ -42,6 +42,7 @@ import (
 	"github.com/go-wasmcontainers/engine/image"
 	"github.com/go-wasmcontainers/engine/rootfs"
 	"github.com/go-wasmcontainers/engine/runtime/wazero"
+	"github.com/go-wasmcontainers/engine/wasi"
 
 	"github.com/go-wasmcontainers/build/driver"
 )
@@ -67,7 +68,9 @@ type Engine struct {
 // New starts the real engine (its own API, every endpoint the builder
 // uses) with its images under dir.
 func New(dir string) (*Engine, error) {
-	ex := wazero.New(wazero.Options{})
+	// The engine's own WASI host with the WASIX process subset, as wctrd
+	// runs it: what shell-form RUN needs.
+	ex := wazero.New(wazero.Options{EngineWASI: true, HostModules: []wasi.HostModule{wasi.WASIX}})
 	d, err := daemon.New(daemon.Options{Root: dir, Containers: container.Options{Executor: ex}})
 	if err != nil {
 		ex.Close(context.Background())
