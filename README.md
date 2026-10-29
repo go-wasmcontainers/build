@@ -167,9 +167,9 @@ with the build command added (go1.27.3, `GOOS=js`).
 - A step's output streams as it runs (the log stream is followed from
   before the start, so no line is lost); stdout and stderr are printed
   as they come, without a per-step prefix.
-- Until `ghcr.io/go-wasmcontainers/shell` is published, the tests build
-  that image from a pinned commit of go-wasmcontainers/shell
-  (`$WCTR_SHELL_SRC`; CI sets it and fails rather than skip).
+- The shell-form RUN tests pull `ghcr.io/go-wasmcontainers/shell:0.1.0`
+  (pinned by digest) from ghcr.io, so they need network access; a failed
+  pull fails them rather than skipping.
 - `RUN pkgx install …` (installing go-pkgx bottles) is a later goal; what it
   needs is in [docs/ENGINE.md](docs/ENGINE.md).
 
