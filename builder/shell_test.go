@@ -1,104 +1,33 @@
 package builder_test
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/go-wasmcontainers/build/builder"
 	"github.com/go-wasmcontainers/build/internal/enginetest"
 )
 
-var (
-	shellOnce   sync.Once
-	shellLayout []byte
-	shellErr    error
-)
+// ShellImage is the go-wasmcontainers/shell base image (/bin/sh +
+// coreutils, wasip1/wasm) these tests build on: v0.1.0, pinned by its
+// manifest digest so the tests run against the same bytes every time.
+const ShellImage = "ghcr.io/go-wasmcontainers/shell@sha256:79b185bfd505b523227396208976641e616723c3238c2a2edf18adcf15423b0e"
 
-// shellImageTar builds the go-wasmcontainers/shell base image (/bin/sh,
-// coreutils) as an OCI layout tar from a checkout named by
-// $WCTR_SHELL_SRC, the way its image workflow does. Without the variable
-// the test is skipped — unless $WCTR_REQUIRE_SHELL is set (CI), where a
-// skip would read as a pass.
-func shellImageTar(t *testing.T) []byte {
-	src := os.Getenv("WCTR_SHELL_SRC")
-	if src == "" {
-		if os.Getenv("WCTR_REQUIRE_SHELL") != "" {
-			t.Fatal("WCTR_REQUIRE_SHELL is set but WCTR_SHELL_SRC is not")
-		}
-		t.Skip("set WCTR_SHELL_SRC to a go-wasmcontainers/shell checkout to run the shell-form RUN tests")
-	}
-	shellOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "wctr-shell-image")
-		if err != nil {
-			shellErr = err
-			return
-		}
-		defer os.RemoveAll(dir)
-		wasm := append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm", "CGO_ENABLED=0")
-		for _, c := range []struct {
-			env  []string
-			args []string
-		}{
-			{wasm, []string{"build", "-trimpath", "-o", filepath.Join(dir, "sh.wasm"), "./cmd/sh"}},
-			{wasm, []string{"build", "-trimpath", "-o", filepath.Join(dir, "coreutils.wasm"), "github.com/wasmdesk/coreutils/cmd/multicall"}},
-			{os.Environ(), []string{"run", "./cmd/mkimage", "--sh", filepath.Join(dir, "sh.wasm"), "--coreutils", filepath.Join(dir, "coreutils.wasm"),
-				"--version", "0.0.0-test", "--layout", filepath.Join(dir, "layout")}},
-		} {
-			cmd := exec.Command("go", c.args...)
-			cmd.Dir, cmd.Env = src, append(c.env, "GOWORK=off")
-			if out, err := cmd.CombinedOutput(); err != nil {
-				shellErr = &exec.Error{Name: strings.Join(c.args, " ") + ": " + string(out), Err: err}
-				return
-			}
-		}
-		var buf bytes.Buffer
-		tw := tar.NewWriter(&buf)
-		root := filepath.Join(dir, "layout")
-		shellErr = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || p == root {
-				return err
-			}
-			rel, _ := filepath.Rel(root, p)
-			if d.IsDir() {
-				return tw.WriteHeader(&tar.Header{Name: filepath.ToSlash(rel) + "/", Typeflag: tar.TypeDir, Mode: 0o755})
-			}
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			if err := tw.WriteHeader(&tar.Header{Name: filepath.ToSlash(rel), Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(b))}); err != nil {
-				return err
-			}
-			_, err = tw.Write(b)
-			return err
-		})
-		tw.Close()
-		shellLayout = buf.Bytes()
-	})
-	if shellErr != nil {
-		t.Fatal(shellErr)
-	}
-	return shellLayout
-}
-
-// loadShell loads the base image into e as shell:latest.
+// loadShell pulls the base image into e (anonymously, from ghcr.io) and
+// tags it shell:latest. A failed pull fails the test: skipping would read
+// as a pass.
 func loadShell(t *testing.T, e *enginetest.Engine) {
+	t.Helper()
 	ctx := context.Background()
 	d := e.Driver()
-	ref, err := d.LoadImage(ctx, bytes.NewReader(shellImageTar(t)))
-	if err != nil {
-		t.Fatal(err)
+	var progress bytes.Buffer
+	if err := d.PullImage(ctx, ShellImage, &progress); err != nil {
+		t.Fatalf("pulling the shell base image %s: %v\n%s", ShellImage, err, progress.String())
 	}
-	if err := d.TagImage(ctx, strings.TrimPrefix(ref, "docker.io/library/"), "shell", "latest"); err != nil {
-		t.Fatalf("tag %s: %v", ref, err)
+	if err := d.TagImage(ctx, ShellImage, "shell", "latest"); err != nil {
+		t.Fatalf("tag %s: %v", ShellImage, err)
 	}
 }
 
@@ -133,8 +62,8 @@ CMD cat /n /who
 	if strings.Join(img.Config.Cmd, "|") != "/bin/sh|-c|cat /n /who" {
 		t.Fatalf("CMD %q", img.Config.Cmd)
 	}
-	// A failing shell command stops the build with its status.
-	_, err = builder.Build(context.Background(), builder.Options{Containerfile: []byte("FROM shell\nRUN false\n"), Engine: d})
+	// The image's own SHELL is honoured, and FROM takes the digest reference.
+	_, err = builder.Build(context.Background(), builder.Options{Containerfile: []byte("FROM " + ShellImage + "\nRUN false\n"), Engine: d})
 	if err == nil || !strings.Contains(err.Error(), "exit code: 1") {
 		t.Fatalf("RUN false: %v", err)
 	}
